@@ -193,38 +193,41 @@ def probe_device(devpathlink, nodestr):
 # describe the filesystem or other usage.
 blockbyname=dict()
 blockbynode=dict()
-sysclassblock="/sys/class/block/"
-for x in os.listdir(sysclassblock):
-	nodestr=io.FileIO(sysclassblock+x+'/dev').read().split("\n")[0]
-	sizestr=sect2size(io.FileIO(sysclassblock+x+'/size').read().split("\n")[0])
+def probe_block(blocklink):
+	name=blocklink.rsplit('/', 1)[-1]
+	if name in blockbyname:
+		return
+	blkpath = os.path.realpath(blocklink)
+	nodestr=io.FileIO(blkpath+'/dev').read().split("\n")[0]
+	sizestr=sect2size(io.FileIO(blkpath+'/size').read().split("\n")[0])
 	node = nodestr.split(':',1)
-	dev=Struct(name=x, node=nodestr, size=sizestr, major=int(node[0]), minor=int(node[1]), shown=False)
-	if os.path.exists(sysclassblock+x+'/device'):
-		dev.phy = probe_device(sysclassblock+x+'/device', nodestr)
+	dev=Struct(name=name, node=nodestr, size=sizestr, major=int(node[0]), minor=int(node[1]), shown=False)
+	if os.path.exists(blkpath+'/device'):
+		dev.phy = probe_device(blkpath+'/device', nodestr)
 		if dev.phy:
 			dev.phy.block = dev
-	if os.path.exists(sysclassblock+x+'/holders'):
-		dev.holders = os.listdir(sysclassblock+x+'/holders')
+	if os.path.exists(blkpath+'/holders'):
+		dev.holders = os.listdir(blkpath+'/holders')
 	else:
 		dev.holders = []
-	if os.path.exists(sysclassblock+x+'/slaves'):
-		dev.slaves = os.listdir(sysclassblock+x+'/slaves')
+	if os.path.exists(blkpath+'/slaves'):
+		dev.slaves = os.listdir(blkpath+'/slaves')
 	else:
 		dev.slaves = []
-	dev.partitions = [y for y in os.listdir(sysclassblock+x) if os.path.exists(sysclassblock+x+'/'+y+'/dev')]
+	dev.partitions = [y for y in os.listdir(blkpath) if os.path.exists(blkpath+'/'+y+'/dev')]
 	dev.__dict__.update(extractvars(runx(['blkid', '-p', '-o', 'udev', '/dev/block/'+nodestr])))
-	if os.path.exists(sysclassblock+x+'/md'):
+	if os.path.exists(blkpath+'/md'):
 		dev.isMD = True
 		dev.__dict__.update(extractvars(runx(['mdadm', '--export', '--detail', '/dev/block/'+nodestr])))
 	if dev.ID_FS_TYPE == 'linux_raid_member':
 		dev.hasMD = True
 		dev.__dict__.update(extractvars(runx(['mdadm', '--export', '--examine', '/dev/block/'+nodestr])))
 		if dev.holders:
-			mddir=sysclassblock+x+'/holders/'+dev.holders[0]+'/md/'
+			mddir=blkpath+'/holders/'+dev.holders[0]+'/md/'
 			dev.MD_array_state = io.FileIO(mddir+'array_state').read().split("\n")[0]
 			dev.MD_array_size = io.FileIO(mddir+'array_size').read().split("\n")[0]
-			dev.MD_slot = io.FileIO(mddir+'dev-'+x+'/slot').read().split("\n")[0]
-			dev.MD_state = io.FileIO(mddir+'dev-'+x+'/state').read().split("\n")[0]
+			dev.MD_slot = io.FileIO(mddir+'dev-'+name+'/slot').read().split("\n")[0]
+			dev.MD_state = io.FileIO(mddir+'dev-'+name+'/state').read().split("\n")[0]
 			dev.FS = "MD %s (%s/%s) %s %s %s %s" % (dev.MD_LEVEL, dev.MD_slot, int(dev.MD_DEVICES), dev.size, dev.holders[0], dev.MD_array_state, dev.MD_state)
 		else:
 			dev.FS = "MD %s (%s) %s inactive" % (dev.MD_LEVEL, dev.MD_DEVICES, dev.size)
@@ -242,8 +245,13 @@ for x in os.listdir(sysclassblock):
 		dev.FS += " '%s'" % dev.ID_FS_LABEL
 	if dev.ID_FS_UUID:
 		dev.FS += " {%s}" % dev.ID_FS_UUID
-	blockbyname[x] = dev
+	blockbyname[name] = dev
 	blockbynode[nodestr] = dev
+	for part in dev.partitions:
+		probe_block(blkpath+'/'+part)
+
+for x in os.listdir('/sys/block/'):
+	probe_block('/sys/block/'+x)
 
 #-------------------
 # Collect information on mounted file systems and annotate the
