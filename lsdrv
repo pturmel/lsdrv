@@ -14,7 +14,7 @@
 #	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 #	GNU General Public License for more details.
 
-import os, io, re
+import os, re
 from subprocess import Popen, PIPE
 
 #-------------------
@@ -39,6 +39,24 @@ class Struct(object):
 		return type(self)(**self.__dict__)
 	def __getattr__(self, attr):
 		return None
+
+#-------------------
+# Read one line from a file and return it (without trailing newline) and
+# all leading and trailing whitespace removed.
+# Return None if the file doesn't exist.
+def fileline1(filename):
+	try:
+		fh = open(filename, 'r')
+	except OSError:
+		return None
+	try:
+		s = fh.readline()
+		if s and s[-1]=="\n":
+			return s[:-1].strip()
+		return s.strip()
+	finally:
+		fh.close()
+	return ''
 
 #-------------------
 # Spawn an executable and collect its output.  Equivalent to the
@@ -139,20 +157,20 @@ def probe_controller(cpathlink):
 	cntrlr = Struct(cpath=cpath, units=dict(),
 		abbrev=re1.sub(r'\1\2', cpath[12:]),
 		driver = os.path.realpath(cpath+'/driver').rsplit('/',1)[-1],
-		modpre = io.FileIO(cpath+'/modalias').read().split("\n",1)[0].split(':',1)[0])
+		modpre = fileline1(cpath+'/modalias').split(':',1)[0])
 	if cntrlr.modpre == 'pci':
 		cntrlr.description = runx(['lspci', '-s', cntrlr.abbrev.rsplit('/',1)[-1]]).split("\n",1)[0]
 		cntrlr.descriptors = ['PCI', '[%s]' % cntrlr.driver, cntrlr.description]
 	elif cntrlr.modpre == 'usb':
 		if os.path.exists(cpath+'/busnum'):
-			cntrlr.busnum = io.FileIO(cpath+'/busnum').read().split("\n",1)[0]
-			cntrlr.devnum = io.FileIO(cpath+'/devnum').read().split("\n",1)[0]
-			cntrlr.serial = io.FileIO(cpath+'/serial').read().split("\n",1)[0]
+			cntrlr.busnum = fileline1(cpath+'/busnum')
+			cntrlr.devnum = fileline1(cpath+'/devnum')
+			cntrlr.serial = fileline1(cpath+'/serial')
 		else:
 			parentpath = os.path.dirname(cpath)
-			cntrlr.busnum = io.FileIO(parentpath+'/busnum').read().split("\n",1)[0]
-			cntrlr.devnum = io.FileIO(parentpath+'/devnum').read().split("\n",1)[0]
-			cntrlr.serial = io.FileIO(parentpath+'/serial').read().split("\n",1)[0]
+			cntrlr.busnum = fileline1(parentpath+'/busnum')
+			cntrlr.devnum = fileline1(parentpath+'/devnum')
+			cntrlr.serial = fileline1(parentpath+'/serial')
 		cntrlr.description = runx(['lsusb', '-s', cntrlr.busnum+':'+cntrlr.devnum]).split("\n",1)[0]
 		cntrlr.descriptors = ['USB', '[%s]' % cntrlr.driver, cntrlr.description, '{%s}' % cntrlr.serial]
 	else:
@@ -172,10 +190,12 @@ def probe_device(devpathlink, nodestr):
 	if devpath in phydevs:
 		return phydevs[devpath]
 	phy = Struct(dpath=devpath, node=nodestr,
-		vendor=io.FileIO(devpath+'/vendor').read().split("\n",1)[0].strip(),
-		model=io.FileIO(devpath+'/model').read().split("\n",1)[0].strip())
+		vendor=fileline1(devpath+'/vendor'),
+		model=fileline1(devpath+'/model'))
 	if os.path.exists(devpath+'/unique_id'):
-		phy.serial = io.FileIO(devpath+'/unique_id').read().split("\n",1)[0].strip()
+		phy.serial = fileline1(devpath+'/unique_id')
+	if phy.serial:
+		phy.serial = phy.serial.strip()
 	if not phy.serial:
 		phy.serial = extractre(re2, runx(['sginfo', '-s', '/dev/block/'+nodestr]))
 	if not phy.serial:
@@ -198,8 +218,8 @@ def probe_block(blocklink):
 	if name in blockbyname:
 		return
 	blkpath = os.path.realpath(blocklink)
-	nodestr=io.FileIO(blkpath+'/dev').read().split("\n")[0]
-	sizestr=sect2size(io.FileIO(blkpath+'/size').read().split("\n")[0])
+	nodestr=fileline1(blkpath+'/dev')
+	sizestr=sect2size(fileline1(blkpath+'/size'))
 	node = nodestr.split(':',1)
 	dev=Struct(name=name, node=nodestr, size=sizestr, major=int(node[0]), minor=int(node[1]), shown=False)
 	if os.path.exists(blkpath+'/device'):
@@ -224,10 +244,10 @@ def probe_block(blocklink):
 		dev.__dict__.update(extractvars(runx(['mdadm', '--export', '--examine', '/dev/block/'+nodestr])))
 		if dev.holders:
 			mddir=blkpath+'/holders/'+dev.holders[0]+'/md/'
-			dev.MD_array_state = io.FileIO(mddir+'array_state').read().split("\n")[0]
-			dev.MD_array_size = io.FileIO(mddir+'array_size').read().split("\n")[0]
-			dev.MD_slot = io.FileIO(mddir+'dev-'+name+'/slot').read().split("\n")[0]
-			dev.MD_state = io.FileIO(mddir+'dev-'+name+'/state').read().split("\n")[0]
+			dev.MD_array_state = fileline1(mddir+'array_state')
+			dev.MD_array_size = fileline1(mddir+'array_size')
+			dev.MD_slot = fileline1(mddir+'dev-'+name+'/slot')
+			dev.MD_state = fileline1(mddir+'dev-'+name+'/state')
 			dev.FS = "MD %s (%s/%s) %s %s %s %s" % (dev.MD_LEVEL, dev.MD_slot, int(dev.MD_DEVICES), dev.size, dev.holders[0], dev.MD_array_state, dev.MD_state)
 		else:
 			dev.FS = "MD %s (%s) %s inactive" % (dev.MD_LEVEL, dev.MD_DEVICES, dev.size)
@@ -257,7 +277,8 @@ for x in os.listdir('/sys/block/'):
 # Collect information on mounted file systems and annotate the
 # corresponding block device.  Use the block device's major:minor node
 # numbers, as the mount list often shows symlinks.
-for x in io.FileIO('/proc/mounts').readlines():
+pmfh = open('/proc/mounts', 'r')
+for x in pmfh:
 	if x[0:5] == '/dev/':
 		mdev, mnt = tuple(x.split(' ', 2)[0:2])
 		devstat = os.stat(mdev)
@@ -271,6 +292,7 @@ for x in io.FileIO('/proc/mounts').readlines():
 			dev.mountdev = mdev
 			dev.mountpoint = mnt
 			dev.mountinfo = mntstat
+pmfh.close()
 
 #-------------------
 # Collect information on LVM volumes and groups and annotate the
