@@ -47,7 +47,12 @@ class Struct(object):
 def runx(*args, **kwargs):
 	kwargs['stdout'] = PIPE
 	kwargs['stderr'] = PIPE
-	sub = Popen(*args, **kwargs)
+	try:
+		sub = Popen(*args, **kwargs)
+	except OSError as e:
+		print "Unable to execute " + str(args[0][0])
+		print e
+		exit()
 	out, err = sub.communicate()
 	return out
 
@@ -250,7 +255,10 @@ for x in io.FileIO('/proc/mounts').readlines():
 		devstat = os.stat(mdev)
 		nodestr="%d:%d" % (os.major(devstat.st_rdev), os.minor(devstat.st_rdev))
 		if nodestr in blockbynode:
-			mntstat = os.statvfs(mnt)
+			try:
+				mntstat = os.statvfs(mnt)
+			except OSError:
+				mntstat = None
 			dev = blockbynode[nodestr]
 			dev.mountdev = mdev
 			dev.mountpoint = mnt
