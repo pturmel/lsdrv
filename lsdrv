@@ -148,16 +148,20 @@ def probe_controller(cpathlink):
 	cpath = os.path.realpath(cpathlink)
 	if cpath in controllers:
 		return controllers[cpath]
-	while cpath and not os.path.exists(cpath+'/driver'):
-		cpath = os.path.dirname(cpath)
-		if cpath in controllers:
-			return controllers[cpath]
-	if not cpath:
-		return None
+	if not os.path.exists(cpath+'/driver'):
+		cpathparent = cpath.rsplit('/',1)[0]
+		if os.path.exists(cpathparent+'/driver'):
+			cpath = cpathparent
+			if cpath in controllers:
+				return controllers[cpath]
 	cntrlr = Struct(cpath=cpath, units=dict(),
-		abbrev=re1.sub(r'\1\2', cpath[12:]),
-		driver = os.path.realpath(cpath+'/driver').rsplit('/',1)[-1],
-		modpre = fileline1(cpath+'/modalias').split(':',1)[0])
+		abbrev=re1.sub(r'\1\2', cpath[12:]))
+	if os.path.exists(cpath+'/driver'):
+		cntrlr.driver = os.path.realpath(cpath+'/driver').rsplit('/',1)[-1]
+		try:
+			cntrlr.modpre = fileline1(cpath+'/modalias').split(':',1)[0]
+		except:
+			pass
 	if cntrlr.modpre == 'pci':
 		cntrlr.description = runx(['lspci', '-s', cntrlr.abbrev.rsplit('/',1)[-1]]).split("\n",1)[0]
 		cntrlr.descriptors = ['PCI', '[%s]' % cntrlr.driver, cntrlr.description]
@@ -174,7 +178,7 @@ def probe_controller(cpathlink):
 		cntrlr.description = runx(['lsusb', '-s', cntrlr.busnum+':'+cntrlr.devnum]).split("\n",1)[0]
 		cntrlr.descriptors = ['USB', '[%s]' % cntrlr.driver, cntrlr.description, '{%s}' % cntrlr.serial]
 	else:
-		cntrlr.descriptors = ['Controller %s' % cntrlr.abbrev[1:], '[%s]' % cntrlr.driver, cntrlr.description]
+		cntrlr.descriptors = ['Controller %s' % cntrlr.abbrev[1:], '[%s]' % cntrlr.driver]
 	controllers[cpath] = cntrlr
 	return cntrlr
 
