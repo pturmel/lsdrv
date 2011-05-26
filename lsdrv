@@ -47,7 +47,7 @@ class Struct(object):
 def fileline1(filename):
 	try:
 		fh = open(filename, 'r')
-	except OSError:
+	except IOError:
 		return None
 	try:
 		s = fh.readline()
