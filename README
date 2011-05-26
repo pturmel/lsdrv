@@ -1,0 +1,28 @@
+lsdrv - Report on a system's disk interfaces and how they are used.
+
+This script shows a system administrator the details of the block devices
+in a system, organized by subsystem and interface and displayed in a tree.
+Where possible, serial numbers and unique IDs are displayed in braces to
+document the setup. The hierarchy looks like:
+
+Controller {serial}
+ └─Physical Device {serial}
+    └─Block Device {uuid}
+       └─Partition {uuid}
+          └─Layered Device {uuid}
+             └─LVM Volume Group {uuid}
+                └─LVM Logical Volume {uuid}
+                   └─Mount point
+
+System utilities 'lspci' and/or 'lsusb' are used to describe the
+controller, with fallback to an abbreviated form of the sysfs path.
+
+Sysfs properties and the system utilities 'sginfo' and/or 'smartctl' are
+used to decribe the physical device.
+
+Sysfs properties and the system utility 'blkid' are used to describe the
+generic block devices and the partitions or other layered devices they
+contain (except for LVM).
+
+System utilities 'pvs' and 'lvs' are used to describe block devices that
+are physical volumes in the LVM subsystem.
