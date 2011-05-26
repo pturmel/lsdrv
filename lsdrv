@@ -14,7 +14,7 @@
 #	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 #	GNU General Public License for more details.
 
-import os, re
+import os, re, signal
 from subprocess import Popen, PIPE
 
 #-------------------
@@ -59,10 +59,31 @@ def fileline1(filename):
 	return ''
 
 #-------------------
+# Define a global signal handler.  It's primary job will be to kill off
+# unruly sub-processes.
+killpid=0
+def sighandler(signum, frame):
+	global killpid
+	if signum==signal.SIGALRM and killpid:
+		try:
+			os.kill(killpid, signal.SIGKILL)
+		except:
+			pass
+		killpid=0
+signal.signal(signal.SIGALRM, sighandler)
+
+#-------------------
 # Spawn an executable and collect its output.  Equivalent to the
 # check_output convenience function of the subprocess module introduced
 # in python 2.7.
+# If runtime is limited to fifteen seconds.
 def runx(*args, **kwargs):
+	global killpid
+	if 'timeout' in kwargs:
+		timeout=kwargs['timeout']
+		del kwargs['timeout']
+	else:
+		timeout=5
 	kwargs['stdout'] = PIPE
 	kwargs['stderr'] = PIPE
 	try:
@@ -70,8 +91,11 @@ def runx(*args, **kwargs):
 	except OSError as e:
 		print "Unable to execute " + str(args[0][0])
 		print e
-		exit()
+		return tuple('', '')
+	signal.alarm(timeout)
+	killpid = sub.pid
 	out, err = sub.communicate()
+	killpid=0
 	return out
 
 #-------------------
@@ -148,12 +172,16 @@ def probe_controller(cpathlink):
 	cpath = os.path.realpath(cpathlink)
 	if cpath in controllers:
 		return controllers[cpath]
-	if not os.path.exists(cpath+'/driver'):
+	while not os.path.exists(cpath+'/driver'):
 		cpathparent = cpath.rsplit('/',1)[0]
 		if os.path.exists(cpathparent+'/driver'):
 			cpath = cpathparent
 			if cpath in controllers:
 				return controllers[cpath]
+			break
+		if len(cpathparent)<=12:
+			break
+		cpath = cpathparent
 	cntrlr = Struct(cpath=cpath, units=dict(),
 		abbrev=re1.sub(r'\1\2', cpath[12:]))
 	if os.path.exists(cpath+'/driver'):
