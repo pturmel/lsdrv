@@ -322,8 +322,10 @@ for x in pmfh:
 			except OSError:
 				mntstat = None
 			dev = blockbynode[nodestr]
+			if (not dev.mountpoints):
+				dev.mountpoints = []
 			dev.mountdev = mdev
-			dev.mountpoint = mnt
+			dev.mountpoints.append(mnt)
 			dev.mountinfo = mntstat
 pmfh.close()
 
@@ -386,8 +388,8 @@ def show_blocks(indent, blocks):
 		else:
 			branch=continuation
 		print "%s %s─%s: %s" % (indent, branch[1], blk.name, blk.FS)
-		if blk.mountpoint:
-			print "%s %s  └─Mounted as %s @ %s" % (indent, branch[0], blk.mountdev, blk.mountpoint)
+		if blk.mountpoints:
+			print "%s %s  └─Mounted as %s @ %s" % (indent, branch[0], blk.mountdev, ", ".join(blk.mountpoints))
 		elif blk.hasLVM:
 			show_vgroup(indent+"   ", vgroups[blk.vg_name])
 		else:
