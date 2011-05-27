@@ -14,7 +14,7 @@
 #	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 #	GNU General Public License for more details.
 
-import os, re, signal
+import os, re, signal, sys
 from subprocess import Popen, PIPE
 
 #-------------------
@@ -88,10 +88,11 @@ def runx(*args, **kwargs):
 	kwargs['stderr'] = PIPE
 	try:
 		sub = Popen(*args, **kwargs)
-	except OSError as e:
-		print "Unable to execute " + str(args[0][0])
-		print e
-		return tuple('', '')
+	except OSError:
+		e = sys.exc_info()[1]
+		sys.stderr.write("Unable to execute " + str(args[0][0] + "\n"))
+		sys.stderr.write(str(e) + "\n")
+		return ''
 	signal.alarm(timeout)
 	killpid = sub.pid
 	out, err = sub.communicate()
