@@ -5,15 +5,15 @@ It was downloaded from <url://example.com>
 
 Upstream Author(s):
 
-    Phil Turmel <philip@turmel.org>
+    Philip J. Turmel <philip@turmel.org>
 
 Copyright:
 
-    <Copyright (C) 2011 Phil Turmel>
+    <Copyright (C) 2011 Philip J. Turmel>
 
 License:
 
-    GPL
+    GPL-2
 
 The Debian packaging is (C) 2011, Roman Ovchinnikov <coolthecold@gmail.com> and
 is licensed under the GPL, see `/usr/share/common-licenses/GPL'.
