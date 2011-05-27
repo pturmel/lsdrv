@@ -125,8 +125,8 @@ def extractvars(buffer):
 #-------------------
 # By Seo Sanghyeon.  Some changes by Connelly Barnes and Phil Turmel.
 def try_int(s):
-    try: return int(s)
-    except: return s
+	try: return int(s)
+	except: return s
 natsortre = re.compile(r'(\d+|\D+)')
 def natsort_key(s):
 	if isinstance(s, str):
@@ -137,7 +137,7 @@ def natsort_key(s):
 		except TypeError:
 			return s
 def natcmp(a, b):
-    return cmp(natsort_key(a), natsort_key(b))
+	return cmp(natsort_key(a), natsort_key(b))
 
 #-------------------
 # Convert device sizes expressed in kibibytes into human-readable
