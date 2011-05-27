@@ -1,0 +1,17 @@
+Source: lsdrv
+Section: admin
+Priority: extra
+Maintainer: Roman Ovchinnikov <coolthecold@gmail.com>
+Build-Depends: debhelper (>= 7)
+Standards-Version: 3.7.3
+Homepage: https://github.com/pturmel/lsdrv
+
+Package: lsdrv
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, lvm2, smartmontools, sg3-utils, pciutils, util-linux
+Description: report on a system's disk interfaces and how they are used
+ This script shows a system administrator the details of the block devices
+ in a system, organized by subsystem and interface and displayed in a tree.
+ Where possible, serial numbers and unique IDs are displayed in braces to
+ document the setup. The hierarchy looks like:
+
