@@ -8,7 +8,7 @@ Homepage: https://github.com/pturmel/lsdrv
 
 Package: lsdrv
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}, lvm2, smartmontools, sg3-utils, pciutils, util-linux
+Depends: ${shlibs:Depends}, ${misc:Depends}, lvm2, smartmontools, sg3-utils, pciutils, util-linux, python (>= 2.5)
 Description: report on a system's disk interfaces and how they are used
  This script shows a system administrator the details of the block devices
  in a system, organized by subsystem and interface and displayed in a tree.
