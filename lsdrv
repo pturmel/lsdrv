@@ -133,8 +133,8 @@ def natsort_key(s):
 		return map(try_int, natsortre.findall(s))
 	else:
 		try:
-			return tuple([natsort_keys(x) for x in s])
-		except:
+			return tuple([natsort_key(x) for x in s])
+		except TypeError:
 			return s
 def natcmp(a, b):
     return cmp(natsort_key(a), natsort_key(b))
