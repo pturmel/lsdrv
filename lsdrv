@@ -361,7 +361,8 @@ for x in runx(['lvs', '-o', 'vg_name,lv_name,lv_path', '--noheadings', '--separa
 			dev = blockbynode[nodestr]
 			dev.isLVM = True
 			dev.vg_name = vg_name
-			dev.__dict__.update(extractvars(runx(['lvs', '--rows', '-o', 'all', '--nameprefixes', '--noheadings', '--unquoted', lv_path])))
+			dev.lv_name = lv_name
+			dev.FS = "LV '%s' %s" % (dev.lv_name, dev.FS)
 		if vg_name in vgroups:
 			vgroups[vg_name].LVs += [dev]
 		else:
