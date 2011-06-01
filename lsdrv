@@ -14,7 +14,7 @@
 #	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 #	GNU General Public License for more details.
 
-import os, re, signal, sys
+import os, re, signal, stat, sys
 from subprocess import Popen, PIPE
 
 #-------------------
@@ -77,6 +77,7 @@ signal.signal(signal.SIGALRM, sighandler)
 # check_output convenience function of the subprocess module introduced
 # in python 2.7.
 # If runtime is limited to fifteen seconds.
+RunxFails = dict()
 def runx(*args, **kwargs):
 	global killpid
 	if 'timeout' in kwargs:
@@ -90,8 +91,7 @@ def runx(*args, **kwargs):
 		sub = Popen(*args, **kwargs)
 	except OSError:
 		e = sys.exc_info()[1]
-		sys.stderr.write("Unable to execute " + str(args[0][0] + "\n"))
-		sys.stderr.write(str(e) + "\n")
+		RunxFails[args[0][0]] = args[0][0]
 		return ''
 	signal.alarm(timeout)
 	killpid = sub.pid
@@ -227,12 +227,22 @@ def probe_device(devpathlink, nodestr):
 		model=fileline1(devpath+'/model'))
 	if os.path.exists(devpath+'/unique_id'):
 		phy.serial = fileline1(devpath+'/unique_id')
+	if not phy.serial and os.path.exists(devpath+'/ieee1394_id'):
+		phy.serial = fileline1(devpath+'/ieee1394_id')
 	if phy.serial:
 		phy.serial = phy.serial.strip()
+	if not phy.serial:
+		phy.__dict__.update(extractvars(runx(['/lib/udev/ata_id', '--export', '/dev/block/'+nodestr])))
+		if phy.ID_SERIAL_SHORT:
+			phy.serial = phy.ID_SERIAL_SHORT
+		elif phy.ID_SERIAL:
+			phy.serial = phy.ID_SERIAL
 	if not phy.serial:
 		phy.serial = extractre(re2, runx(['sginfo', '-s', '/dev/block/'+nodestr]))
 	if not phy.serial:
 		phy.serial = extractre(re3, runx(['smartctl', '-i', '/dev/block/'+nodestr]))
+	if not phy.serial:
+		phy.serial = extractre(re3, runx(['smartctl', '-d', 'ata', '-i', '/dev/block/'+nodestr]))
 	phy.name = "%s %s" % (os.path.realpath(devpath+'/subsystem').rsplit('/',1)[-1], devpath.rsplit('/',1)[-1])
 	phy.controller = probe_controller(os.path.dirname(devpath))
 	if phy.controller:
@@ -246,6 +256,7 @@ def probe_device(devpathlink, nodestr):
 # describe the filesystem or other usage.
 blockbyname=dict()
 blockbynode=dict()
+UseVolID = os.path.exists('/lib/udev/vol_id')
 def probe_block(blocklink):
 	name=blocklink.rsplit('/', 1)[-1]
 	if name in blockbyname:
@@ -255,6 +266,12 @@ def probe_block(blocklink):
 	sizestr=sect2size(fileline1(blkpath+'/size'))
 	node = nodestr.split(':',1)
 	dev=Struct(name=name, node=nodestr, size=sizestr, major=int(node[0]), minor=int(node[1]), shown=False)
+	if not os.path.exists('/dev/block/'+nodestr):
+		if not os.path.exists('/dev/block'):
+			os.mkdir('/dev/block', 0755)
+		mm = tuple(map(int, nodestr.split(':')))
+		print "Creating device for node %s ..." % nodestr
+		os.mknod('/dev/block/'+nodestr, stat.S_IFBLK | 0660, os.makedev(mm[0], mm[1]))
 	if os.path.exists(blkpath+'/device'):
 		dev.phy = probe_device(blkpath+'/device', nodestr)
 		if dev.phy:
@@ -268,7 +285,10 @@ def probe_block(blocklink):
 	else:
 		dev.slaves = []
 	dev.partitions = [y for y in os.listdir(blkpath) if os.path.exists(blkpath+'/'+y+'/dev')]
-	dev.__dict__.update(extractvars(runx(['blkid', '-p', '-o', 'udev', '/dev/block/'+nodestr])))
+	if UseVolID:
+		dev.__dict__.update(extractvars(runx(['/lib/udev/vol_id', '--export', '/dev/block/'+nodestr])))
+	else:
+		dev.__dict__.update(extractvars(runx(['blkid', '-p', '-o', 'udev', '/dev/block/'+nodestr])))
 	if os.path.exists(blkpath+'/md'):
 		dev.isMD = True
 		dev.__dict__.update(extractvars(runx(['mdadm', '--export', '--detail', '/dev/block/'+nodestr])))
@@ -289,6 +309,7 @@ def probe_block(blocklink):
 		# overwritten when active PVs are scanned.
 		dev.FS = "PV %s (inactive)" % dev.ID_FS_TYPE
 	elif dev.ID_PART_TABLE_TYPE:
+		# The partitioning report is missed if vol_id is used in place of blkid
 		dev.FS = "Partitioned (%s) %s" % (dev.ID_PART_TABLE_TYPE, dev.size)
 	elif dev.ID_FS_TYPE:
 		dev.FS = "(%s) %s" % (dev.ID_FS_TYPE, dev.size)
@@ -352,10 +373,10 @@ for x in runx(['pvs', '-o', 'pv_name,pv_used,pv_size,pv_uuid,vg_name,vg_size,vg_
 			else:
 				vgroups[vg_name] = Struct(name=vg_name, size=vg_size, free=vg_free, uuid=vg_uuid, LVs=[], PVs=[dev])
 
-for x in runx(['lvs', '-o', 'vg_name,lv_name,lv_path', '--noheadings', '--separator', ' ']).split("\n"):
+for x in runx(['lvs', '-o', 'vg_name,lv_name', '--noheadings', '--separator', ' ']).split("\n"):
 	if x:
-		vg_name, lv_name, lv_path = tuple(x.strip().split(' ',2))
-		devstat = os.stat(lv_path)
+		vg_name, lv_name = tuple(x.strip().split(' ',2))
+		devstat = os.stat('/dev/'+vg_name+'/'+lv_name)
 		nodestr="%d:%d" % (os.major(devstat.st_rdev), os.minor(devstat.st_rdev))
 		if nodestr in blockbynode:
 			dev = blockbynode[nodestr]
@@ -368,6 +389,14 @@ for x in runx(['lvs', '-o', 'vg_name,lv_name,lv_path', '--noheadings', '--separa
 		else:
 			vgroups[vg_name] = Struct(name=vg_name, LVs=[dev], PVs=[])
 
+#-------------------
+# Report unavailable utilities
+if RunxFails:
+	sys.stderr.write("**Warning** The following utility(ies) failed to execute:\n"
+		"  %s\nSome information may be missing.\n\n" % "\n  ".join(RunxFails.values()))
+
+#-------------------
+# Given an indent level and a volume group object, recursively describe it.
 def show_vgroup(indent, vg):
 	if vg.shown:
 		return
