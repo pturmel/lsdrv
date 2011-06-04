@@ -17,12 +17,15 @@ Controller {serial}
 System utilities 'lspci' and/or 'lsusb' are used to describe the
 controller, with fallback to an abbreviated form of the sysfs path.
 
-Sysfs properties and the system utilities 'sginfo' and/or 'smartctl' are
-used to decribe the physical device.
+Sysfs properties and the system utilities 'ata_id', 'sginfo' and/or
+'smartctl' are used to decribe the physical device.
 
-Sysfs properties and the system utility 'blkid' are used to describe the
-generic block devices and the partitions or other layered devices they
-contain (except for LVM).
+Sysfs properties and the system utilities 'vol_id' or 'blkid' are used
+to describe the generic block devices and the partitions or other layered
+devices they contain (except for LVM).
 
 System utilities 'pvs' and 'lvs' are used to describe block devices that
 are physical volumes in the LVM subsystem.
+
+Missing utilities are noted, but the script attempts to continue without
+them.
