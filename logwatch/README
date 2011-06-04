@@ -1,0 +1,5 @@
+To have logwatch report on your storage subsystem, install lsdrv itself
+into a system path, and then add these files to your logwatch install:
+
+zz-lsdrv      ==> /etc/logwatch/scripts/services
+zz-lsdrv.conf ==> /etc/logwatch/conf/services

@@ -1,0 +1,16 @@
+##########################################################################
+# $Id: zz-lsdrv $
+##########################################################################
+$| = 1;
+
+if ( $Debug >= 5 ) {
+    print STDERR "\n\nDEBUG: Inside zz-lsdrv Filter \n\n";
+    $DebugCounter = 1;
+}
+
+#####################
+#Main
+
+system("lsdrv 2>/dev/null");
+
+# vi: shiftwidth=3 tabstop=3 syntax=perl et
