@@ -416,7 +416,7 @@ def show_blocks(indent, blocks):
 			branch=corner
 		else:
 			branch=continuation
-		print "%s %s─%s: %s" % (indent, branch[1], blk.name, blk.FS)
+		print "%s %s─%s: [%s] %s" % (indent, branch[1], blk.name, blk.node, blk.FS)
 		if blk.mounts:
 			for mounts in blk.mounts:
 				if mounts == blk.mounts[-1]:
