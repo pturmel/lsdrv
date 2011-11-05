@@ -360,9 +360,12 @@ pmfh.close()
 vgroups = dict()
 for x in runx(['pvs', '-o', 'pv_name,pv_used,pv_size,pv_uuid,vg_name,vg_size,vg_free,vg_uuid', '--noheadings', '--separator', ' ']).split("\n"):
 	if x:
-		pv_name, pv_used, pv_size, pv_uuid, vg_name, vg_size, vg_free, vg_uuid = tuple(x.strip().split(' ',7))
-		devstat = os.stat(pv_name)
-		nodestr="%d:%d" % (os.major(devstat.st_rdev), os.minor(devstat.st_rdev))
+		try:
+			pv_name, pv_used, pv_size, pv_uuid, vg_name, vg_size, vg_free, vg_uuid = tuple(x.strip().split(' ',7))
+			devstat = os.stat(pv_name)
+			nodestr="%d:%d" % (os.major(devstat.st_rdev), os.minor(devstat.st_rdev))
+		except:
+			nodestr=""
 		if nodestr in blockbynode:
 			dev = blockbynode[nodestr]
 			dev.vg_name = vg_name
