@@ -301,7 +301,11 @@ def probe_block(blocklink):
 			dev.MD_array_size = fileline1(mddir+'array_size')
 			dev.MD_slot = fileline1(mddir+'dev-'+name+'/slot')
 			dev.MD_state = fileline1(mddir+'dev-'+name+'/state')
-			dev.FS = "MD %s (%s/%s) %s %s %s %s" % (dev.MD_LEVEL, dev.MD_slot, int(dev.MD_DEVICES), dev.size, dev.holders[0], dev.MD_array_state, dev.MD_state)
+			try:
+				devcount="%d" % dev.MD_DEVICES
+			except:
+				devcount="?"
+			dev.FS = "MD %s (%s/%s) %s %s %s %s" % (dev.MD_LEVEL, dev.MD_slot, devcount, dev.size, dev.holders[0], dev.MD_array_state, dev.MD_state)
 		else:
 			dev.FS = "MD %s (%s) %s inactive" % (dev.MD_LEVEL, dev.MD_DEVICES, dev.size)
 	elif dev.ID_FS_TYPE and dev.ID_FS_TYPE[0:3] == 'LVM':
