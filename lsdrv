@@ -407,8 +407,8 @@ if RunxFails:
 def show_vgroup(indent, vg):
 	if vg.shown:
 		return
-	print "%s  └─Volume Group %s (%s) %s free {%s}" % (indent, vg.name, ','.join([dev.name for dev in vg.PVs]), vg.free, vg.uuid)
-	show_blocks(indent+"   ", vg.LVs)
+	print "%s └Volume Group %s (%s) %s free {%s}" % (indent, vg.name, ','.join([dev.name for dev in vg.PVs]), vg.free, vg.uuid)
+	show_blocks(indent+"  ", vg.LVs)
 	vg.shown = True
 
 #-------------------
@@ -423,21 +423,21 @@ def show_blocks(indent, blocks):
 			branch=corner
 		else:
 			branch=continuation
-		print "%s %s─%s: [%s] %s" % (indent, branch[1], blk.name, blk.node, blk.FS)
+		print "%s%s%s: [%s] %s" % (indent, branch[1], blk.name, blk.node, blk.FS)
 		if blk.mounts:
 			for mounts in blk.mounts:
 				if mounts == blk.mounts[-1]:
 					mbranch=corner
 				else:
 					mbranch=continuation
-				print "%s %s  %s─Mounted as %s @ %s" % (indent, branch[0], mbranch[1], mounts[0], mounts[1])
+				print "%s%s%sMounted as %s @ %s" % (indent, branch[0], mbranch[1], mounts[0], mounts[1])
 		elif blk.hasLVM:
-			show_vgroup(indent+"   ", vgroups[blk.vg_name])
+			show_vgroup(indent, vgroups[blk.vg_name])
 		else:
 			subs = blk.partitions + blk.holders
 			subs.sort(natcmp)
 			if subs:
-				show_blocks("%s %s " % (indent, branch[0]), [blockbyname[x] for x in subs])
+				show_blocks("%s%s" % (indent, branch[0]), [blockbyname[x] for x in subs])
 		blk.shown = True
 
 #-------------------
@@ -483,9 +483,9 @@ for f, cntrlr in tree:
 			unitdetail += ' '+phy.model
 		if phy.serial:
 			unitdetail += " {%s}" % phy.serial.strip()
-		print ' %s─%s' % (branch[1], unitdetail)
+		print '%s%s' % (branch[1], unitdetail)
 		if phy.block:
-			show_blocks(" %s " % branch[0], [phy.block])
+			show_blocks("%s" % branch[0], [phy.block])
 
 unshown = [z.name for z in blockbynode.values() if z.size != '0.00k' and not z.shown]
 unshown.sort(natcmp)
