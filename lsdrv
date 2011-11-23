@@ -256,16 +256,21 @@ def probe_device(devpathlink, nodestr):
 # describe the filesystem or other usage.
 blockbyname=dict()
 blockbynode=dict()
+algorithms = ('la', 'ra', 'ls', 'rs', 'pz', 'pn', '?6', '?7', # 0-7 convential raid5 & 6
+	'rzr', 'rnr', 'rnc', '?11', '?12', '?13', '?14', '?15',   # Intel DDF
+	'la6', 'ra6', 'ls6', 'rs6', 'pz6')                        # 16-20 Q on device N raid6
 UseVolID = os.path.exists('/lib/udev/vol_id')
 def probe_block(blocklink):
 	name=blocklink.rsplit('/', 1)[-1]
 	if name in blockbyname:
-		return
+		return blockbyname[name]
 	blkpath = os.path.realpath(blocklink)
 	nodestr=fileline1(blkpath+'/dev')
 	sizestr=sect2size(fileline1(blkpath+'/size'))
 	node = nodestr.split(':',1)
 	dev=Struct(name=name, node=nodestr, size=sizestr, major=int(node[0]), minor=int(node[1]), shown=False)
+	blockbyname[name] = dev
+	blockbynode[nodestr] = dev
 	if not os.path.exists('/dev/block/'+nodestr):
 		if not os.path.exists('/dev/block'):
 			os.mkdir('/dev/block', 0755)
@@ -292,41 +297,63 @@ def probe_block(blocklink):
 	if os.path.exists(blkpath+'/md'):
 		dev.isMD = True
 		dev.__dict__.update(extractvars(runx(['mdadm', '--export', '--detail', '/dev/block/'+nodestr])))
+		dev.array_state = fileline1(blkpath+'/md/array_state')
+		dev.layout = fileline1(blkpath+'/md/layout')
+		if dev.MD_LEVEL=='raid10':
+			layout = int(dev.layout)
+			near = layout & 0xff
+			if near>1:
+				dev.MD_LEVEL += ',n%d' % near
+			far = (layout & 0xff00) >> 8
+			if far>1:
+				if layout & 0x10000:
+					dev.MD_LEVEL += ',o%d' % far
+				else:
+					dev.MD_LEVEL += ',f%d' % far
+		elif dev.MD_LEVEL in ('raid5', 'raid6'):
+			try:
+				dev.MD_LEVEL += ','+algorithms[int(dev.layout)]
+			except:
+				pass
+		dev.preFS = "MD v%s %s (%s) %s" % (dev.MD_METADATA, dev.MD_LEVEL, dev.MD_DEVICES, dev.array_state)
 	if dev.ID_FS_TYPE == 'linux_raid_member':
 		dev.hasMD = True
 		dev.__dict__.update(extractvars(runx(['mdadm', '--export', '--examine', '/dev/block/'+nodestr])))
 		if dev.holders:
-			mddir=blkpath+'/holders/'+dev.holders[0]+'/md/'
-			dev.MD_array_state = fileline1(mddir+'array_state')
-			dev.MD_array_size = fileline1(mddir+'array_size')
-			dev.MD_slot = fileline1(mddir+'dev-'+name+'/slot')
-			dev.MD_state = fileline1(mddir+'dev-'+name+'/state')
+			dev.array = probe_block(blkpath+'/holders/'+dev.holders[0])
+			slavedir=blkpath+'/holders/'+dev.holders[0]+'/md/dev-'+name
+			dev.slave_slot = fileline1(slavedir+'/slot')
+			dev.slave_state = fileline1(slavedir+'/state')
+			peers = [y for y in dev.array.slaves if y != dev.name]
+			if peers:
+				peers = " (w/ %s)" % ",".join(peers)
+			else:
+				peers = ""
 			try:
 				devcount="%d" % int(dev.MD_DEVICES)
 			except:
 				devcount="?"
-			dev.FS = "MD %s (%s/%s) %s %s %s %s" % (dev.MD_LEVEL, dev.MD_slot, devcount, dev.size, dev.holders[0], dev.MD_array_state, dev.MD_state)
+			dev.FS = "MD %s (%s/%s)%s %s" % (dev.MD_LEVEL, dev.slave_slot, devcount, peers, dev.slave_state)
 		else:
-			dev.FS = "MD %s (%s) %s inactive" % (dev.MD_LEVEL, dev.MD_DEVICES, dev.size)
+			dev.FS = "MD %s (%s) inactive" % (dev.MD_LEVEL, dev.MD_DEVICES)
 	elif dev.ID_FS_TYPE and dev.ID_FS_TYPE[0:3] == 'LVM':
 		# Placeholder string for inactive physical volumes.  It'll be
 		# overwritten when active PVs are scanned.
 		dev.FS = "PV %s (inactive)" % dev.ID_FS_TYPE
 	elif dev.ID_PART_TABLE_TYPE:
 		# The partitioning report is missed if vol_id is used in place of blkid
-		dev.FS = "Partitioned (%s) %s" % (dev.ID_PART_TABLE_TYPE, dev.size)
+		dev.FS = "Partitioned (%s)" % dev.ID_PART_TABLE_TYPE
 	elif dev.ID_FS_TYPE:
-		dev.FS = "(%s) %s" % (dev.ID_FS_TYPE, dev.size)
+		dev.FS = "%s" % dev.ID_FS_TYPE
 	else:
-		dev.FS = "Empty/Unknown %s" % dev.size
+		dev.FS = "Empty/Unknown"
 	if dev.ID_FS_LABEL:
 		dev.FS += " '%s'" % dev.ID_FS_LABEL
 	if dev.ID_FS_UUID:
 		dev.FS += " {%s}" % dev.ID_FS_UUID
-	blockbyname[name] = dev
-	blockbynode[nodestr] = dev
 	for part in dev.partitions:
 		probe_block(blkpath+'/'+part)
+	return dev
 
 for x in os.listdir('/sys/block/'):
 	probe_block('/sys/block/'+x)
@@ -358,10 +385,11 @@ pmfh.close()
 # corresponding block device.  Use the block device's major:minor node
 # numbers, as the mount list often shows symlinks.
 vgroups = dict()
-for x in runx(['pvs', '-o', 'pv_name,pv_used,pv_size,pv_uuid,vg_name,vg_size,vg_free,vg_uuid', '--noheadings', '--separator', ' ']).split("\n"):
+for x in runx(['pvs', '-o', 'pv_name,pv_free,pv_used,pv_uuid,vg_name,vg_size,vg_free,vg_uuid', '--noheadings', '--separator', ' ']).split("\n"):
 	if x:
+		x = x.strip().replace('  ', ' ')
 		try:
-			pv_name, pv_used, pv_size, pv_uuid, vg_name, vg_size, vg_free, vg_uuid = tuple(x.strip().split(' ',7))
+			pv_name, pv_free, pv_used, pv_uuid, vg_name, vg_size, vg_free, vg_uuid = tuple(x.split(' ',7))
 			devstat = os.stat(pv_name)
 			nodestr="%d:%d" % (os.major(devstat.st_rdev), os.minor(devstat.st_rdev))
 		except:
@@ -371,10 +399,10 @@ for x in runx(['pvs', '-o', 'pv_name,pv_used,pv_size,pv_uuid,vg_name,vg_size,vg_
 			dev.vg_name = vg_name
 			if not dev.hasLVM:
 				dev.hasLVM = True
+				dev.pv_free = pv_free
 				dev.pv_used = pv_used
-				dev.pv_size = pv_size
 				dev.pv_uuid = pv_uuid
-				dev.FS = "PV %s %s/%s VG %s %s {%s}" % (dev.ID_FS_TYPE, pv_used, pv_size, vg_name, vg_size, pv_uuid)
+				dev.FS = "PV %s %s used, %s free {%s}" % (dev.ID_FS_TYPE, pv_used, pv_free, pv_uuid)
 			if vg_name in vgroups:
 				vgroups[vg_name].PVs += [dev]
 			else:
@@ -382,7 +410,8 @@ for x in runx(['pvs', '-o', 'pv_name,pv_used,pv_size,pv_uuid,vg_name,vg_size,vg_
 
 for x in runx(['lvs', '-o', 'vg_name,lv_name', '--noheadings', '--separator', ' ']).split("\n"):
 	if x:
-		vg_name, lv_name = tuple(x.strip().split(' ',2))
+		x = x.strip().replace('  ', ' ')
+		vg_name, lv_name = tuple(x.split(' ',2))
 		devstat = os.stat('/dev/'+vg_name+'/'+lv_name)
 		nodestr="%d:%d" % (os.major(devstat.st_rdev), os.minor(devstat.st_rdev))
 		if nodestr in blockbynode:
@@ -390,7 +419,7 @@ for x in runx(['lvs', '-o', 'vg_name,lv_name', '--noheadings', '--separator', ' 
 			dev.isLVM = True
 			dev.vg_name = vg_name
 			dev.lv_name = lv_name
-			dev.FS = "LV '%s' %s" % (dev.lv_name, dev.FS)
+			dev.FS = "LV %s %s" % (dev.lv_name, dev.FS)
 		if vg_name in vgroups:
 			vgroups[vg_name].LVs += [dev]
 		else:
@@ -404,10 +433,15 @@ if RunxFails:
 
 #-------------------
 # Given an indent level and a volume group object, recursively describe it.
-def show_vgroup(indent, vg):
+def show_vgroup(indent, vg, pv):
+	otherPVs = [dev.name for dev in vg.PVs if dev != pv]
+	if otherPVs:
+		oPVs = " (w/ %s)" % ",".join(otherPVs)
+	else:
+		oPVs = ""
+	print "%s └VG %s %s%s %s free {%s}" % (indent, vg.name, vg.size, oPVs, vg.free, vg.uuid)
 	if vg.shown:
 		return
-	print "%s └Volume Group %s (%s) %s free {%s}" % (indent, vg.name, ','.join([dev.name for dev in vg.PVs]), vg.free, vg.uuid)
 	show_blocks(indent+"  ", vg.LVs)
 	vg.shown = True
 
@@ -417,13 +451,24 @@ def show_vgroup(indent, vg):
 continuation = ('│', '├')
 corner = (' ', '└')
 def show_blocks(indent, blocks):
-	blocks = [x for x in blocks if not x.shown]
 	for blk in blocks:
 		if blk == blocks[-1]:
 			branch=corner
 		else:
 			branch=continuation
-		print "%s%s%s: [%s] %s" % (indent, branch[1], blk.name, blk.node, blk.FS)
+		if blk.preFS:
+			if not blk.shown and (blk.mounts or blk.hasLVM or blk.partitions or blk.holders):
+				line2 = continuation[0]
+			else:
+				line2 = corner[0]
+			namesizenode = "%s %s [%s]" % (blk.name, blk.size, blk.node)
+			print "%s%s%s %s" % (indent, branch[1], namesizenode, blk.preFS)
+			line2spacer = line2+" "*max(0,len(namesizenode)-len(line2))
+			print "%s%s%s %s" % (indent, branch[0], line2spacer, blk.FS)
+		else:
+			print "%s%s%s %s [%s] %s" % (indent, branch[1], blk.name, blk.size, blk.node, blk.FS)
+		if blk.shown:
+			return
 		if blk.mounts:
 			for mounts in blk.mounts:
 				if mounts == blk.mounts[-1]:
@@ -432,7 +477,7 @@ def show_blocks(indent, blocks):
 					mbranch=continuation
 				print "%s%s%sMounted as %s @ %s" % (indent, branch[0], mbranch[1], mounts[0], mounts[1])
 		elif blk.hasLVM:
-			show_vgroup(indent, vgroups[blk.vg_name])
+			show_vgroup(indent, vgroups[blk.vg_name], blk)
 		else:
 			subs = blk.partitions + blk.holders
 			subs.sort(natcmp)
