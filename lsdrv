@@ -142,26 +142,35 @@ def natcmp(a, b):
 #-------------------
 # Convert device sizes expressed in kibibytes into human-readable
 # sizes with a reasonable power-of-two suffix.
-def k2size(k):
+def k2size(k, fmt="%4.2f"):
 	if k<1000:
-		return "%4.2fk" % k
+		return (fmt+"k") % k
 	m=k/1024.0
 	if m<1000:
-		return "%4.2fm" % m
+		return (fmt+"m") % m
 	g=m/1024.0
 	if g<1000:
-		return "%4.2fg" % g
+		return (fmt+"g") % g
 	t=g/1024.0
 	if t<1000:
-		return "%4.2ft" % t
+		return (fmt+"t") % t
 	p=t/1024.0
-	return "%4.2fp" % p
+	return (fmt+"p") % p
 
 #-------------------
 # Convert device sizes expressed as 512-byte sectors into human-readable
 # sizes with a reasonable power-of-two suffix.
-def sect2size(sectors):
-	return k2size(int(sectors)/2.0)
+def sect2size(sectors, fmt="%4.2f"):
+	return k2size(int(sectors)/2.0, fmt)
+
+#-------------------
+# Convert sizes expressed as bytes into human-readable
+# sizes with a reasonable power-of-two suffix.
+def byte2size(bytes, fmt="%4.2f"):
+	b=int(bytes)
+	if b<10000:
+		return (fmt+"b") % b
+	return k2size(b/1024.0, fmt)
 
 #-------------------
 # Given a sysfs path to the parent of a physical block device, resolve the
@@ -256,9 +265,12 @@ def probe_device(devpathlink, nodestr):
 # describe the filesystem or other usage.
 blockbyname=dict()
 blockbynode=dict()
-algorithms = ('la', 'ra', 'ls', 'rs', 'pz', 'pn', '?6', '?7', # 0-7 convential raid5 & 6
-	'rzr', 'rnr', 'rnc', '?11', '?12', '?13', '?14', '?15',   # Intel DDF
-	'la6', 'ra6', 'ls6', 'rs6', 'pz6')                        # 16-20 Q on device N raid6
+algorithms = ('left-asym', 'right-asym', 'left-sym', 'right-sym',     # 0-3 convential raid5 & 6
+	'parity-first', 'parity-last', '?6', '?7',                        # 4-7 convential raid5 & 6
+	'ddf-zero-restart', 'ddf-Nth-restart', 'ddf-Nth-continue', '?11', # 8-10 Intel DDF
+	'?12', '?13', '?14', '?15',
+	'left-asym-6', 'right-asym-6', 'left-sym-6', 'right-sym-6',       # 16-19 Raid6 w/ Q last
+	'parity-first-6')                                                 # 20    Raid6 w/ Q last
 UseVolID = os.path.exists('/lib/udev/vol_id')
 def probe_block(blocklink):
 	name=blocklink.rsplit('/', 1)[-1]
@@ -303,19 +315,44 @@ def probe_block(blocklink):
 			layout = int(dev.layout)
 			near = layout & 0xff
 			if near>1:
-				dev.MD_LEVEL += ',n%d' % near
+				dev.MD_LEVEL += ',near%d' % near
 			far = (layout & 0xff00) >> 8
 			if far>1:
 				if layout & 0x10000:
-					dev.MD_LEVEL += ',o%d' % far
+					dev.MD_LEVEL += ',offset%d' % far
 				else:
-					dev.MD_LEVEL += ',f%d' % far
+					dev.MD_LEVEL += ',far%d' % far
 		elif dev.MD_LEVEL in ('raid5', 'raid6'):
 			try:
 				dev.MD_LEVEL += ','+algorithms[int(dev.layout)]
 			except:
 				pass
 		dev.preFS = "MD v%s %s (%s) %s" % (dev.MD_METADATA, dev.MD_LEVEL, dev.MD_DEVICES, dev.array_state)
+		try:
+			dev.chunk_size = int(fileline1(blkpath+'/md/chunk_size'))
+		except:
+			pass
+		if dev.chunk_size:
+			dev.preFS += ", %s Chunk" % byte2size(dev.chunk_size, "%g")
+		try:
+			dev.mismatch_count = int(fileline1(blkpath+'/md/mismatch_count'))
+		except:
+			pass
+		if dev.mismatch_count:
+			dev.preFS += ", %d Mismatches" % dev.mismatch_count
+		dev.sync_action = fileline1(blkpath+'/md/sync_action')
+		if dev.sync_action != 'idle':
+			try:
+				dev.sync_speed =  k2size(int(fileline1(blkpath+'/md/sync_speed')))
+			except:
+				dev.sync_speed = 0
+			dev.sync_completed = fileline1(blkpath+'/md/sync_completed')
+			try:
+				sync_pos, sep, sync_end = dev.sync_completed.split(' ',2)
+				dev.sync_completed = "%s/%s" % (k2size(int(sync_pos)), k2size(int(sync_end)))
+			except:
+				pass
+			dev.preFS += ", %s (%s) %s/sec" % (dev.sync_action, dev.sync_completed, dev.sync_speed)
 	if dev.ID_FS_TYPE == 'linux_raid_member':
 		dev.hasMD = True
 		dev.__dict__.update(extractvars(runx(['mdadm', '--export', '--examine', '/dev/block/'+nodestr])))
