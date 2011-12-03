@@ -463,7 +463,7 @@ def show_blocks(indent, blocks):
 				line2 = corner[0]
 			namesizenode = "%s %s [%s]" % (blk.name, blk.size, blk.node)
 			print "%s%s%s %s" % (indent, branch[1], namesizenode, blk.preFS)
-			line2spacer = line2+" "*max(0,len(namesizenode)-len(line2))
+			line2spacer = line2+" "*max(0,len(namesizenode)-len(corner[0]))
 			print "%s%s%s %s" % (indent, branch[0], line2spacer, blk.FS)
 		else:
 			print "%s%s%s %s [%s] %s" % (indent, branch[1], blk.name, blk.size, blk.node, blk.FS)
