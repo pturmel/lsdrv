@@ -38,6 +38,23 @@ class Struct(object):
 	def clone(self):
 		return type(self)(**self.__dict__)
 	def __getattr__(self, attr):
+		if 'attrpath' in self.__dict__:
+			fn = os.path.join(self.attrpath, attr)
+			try:
+				fh = open(fn, 'r')
+				v = fh.readline()
+				if v and v[-1]=="\n":
+					v = v[:-1]
+				try:
+					n = int(v)
+					if str(n) == v:
+						v = n
+				except:
+					pass
+			except:
+				v = None
+			self.__dict__[attr] = v
+			return v
 		return None
 
 #-------------------
@@ -192,12 +209,12 @@ def probe_controller(cpathlink):
 		if len(cpathparent)<=12:
 			break
 		cpath = cpathparent
-	cntrlr = Struct(cpath=cpath, units=dict(),
+	cntrlr = Struct(cpath=cpath, attrpath=cpath, units=dict(),
 		abbrev=re1.sub(r'\1\2', cpath[12:]))
 	if os.path.exists(cpath+'/driver'):
 		cntrlr.driver = os.path.realpath(cpath+'/driver').rsplit('/',1)[-1]
 		try:
-			cntrlr.modpre = fileline1(cpath+'/modalias').split(':',1)[0]
+			cntrlr.modpre = cntrl.modalias.split(':',1)[0]
 		except:
 			pass
 	if cntrlr.modpre == 'pci':
@@ -328,6 +345,14 @@ def probe_block(blocklink):
 			except:
 				pass
 		dev.preFS = "MD v%s %s (%s) %s" % (dev.MD_METADATA, dev.MD_LEVEL, dev.MD_DEVICES, dev.array_state)
+		try:
+			dev.degraded = int(fileline1(blkpath+'/md/degraded'))
+		except:
+			pass
+		if dev.degraded:
+			dev.preFS += " DEGRADED"
+			if dev.degraded>1:
+				dev.preFS += "x%d" % dev.degraded
 		try:
 			dev.chunk_size = int(fileline1(blkpath+'/md/chunk_size'))
 		except:
