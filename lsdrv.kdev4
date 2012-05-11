@@ -1,0 +1,4 @@
+[Project]
+Manager=KDevCustomMakeManager
+Name=lsdrv
+VersionControl=kdevgit
