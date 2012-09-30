@@ -1,9 +1,10 @@
 #! /usr/bin/python
 # -*- coding: utf-8 -*-
+# kate: tab-width 4; indent-width 4; tab-indents on; dynamic-word-wrap off; indent-mode python; line-numbers on;
 #
 # lsdrv - Report on a system's disk interfaces and how they are used.
 # 
-# Copyright (C) 2011 Philip J. Turmel <philip@turmel.org>
+# Copyright (C) 2011-2012 Philip J. Turmel <philip@turmel.org>
 #
 #	This program is free software; you can redistribute it and/or modify
 #	it under the terms of the GNU General Public License as published by
@@ -88,6 +89,15 @@ def sighandler(signum, frame):
 			pass
 		killpid=0
 signal.signal(signal.SIGALRM, sighandler)
+
+#-------------------
+# Update the PATH for utility calls to include the location
+# of udev utilities.  Set a default path if none is present (!!)
+try:
+	ospath = os.environ['PATH']
+	os.environ['PATH'] = ospath+':/lib/udev:/usr/lib/udev'
+except KeyError:
+	os.environ['PATH'] = '/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin:/lib/udev:/usr/lib/udev'
 
 #-------------------
 # Spawn an executable and collect its output.  Equivalent to the
@@ -258,7 +268,7 @@ def probe_device(devpathlink, nodestr):
 	if phy.serial:
 		phy.serial = phy.serial.strip()
 	if not phy.serial:
-		phy.__dict__.update(extractvars(runx(['/lib/udev/ata_id', '--export', '/dev/block/'+nodestr])))
+		phy.__dict__.update(extractvars(runx(['ata_id', '--export', '/dev/block/'+nodestr])))
 		if phy.ID_SERIAL_SHORT:
 			phy.serial = phy.ID_SERIAL_SHORT
 		elif phy.ID_SERIAL:
@@ -320,7 +330,7 @@ def probe_block(blocklink):
 		dev.slaves = []
 	dev.partitions = [y for y in os.listdir(blkpath) if os.path.exists(blkpath+'/'+y+'/dev')]
 	if UseVolID:
-		dev.__dict__.update(extractvars(runx(['/lib/udev/vol_id', '--export', '/dev/block/'+nodestr])))
+		dev.__dict__.update(extractvars(runx(['vol_id', '--export', '/dev/block/'+nodestr])))
 	else:
 		dev.__dict__.update(extractvars(runx(['blkid', '-p', '-o', 'udev', '/dev/block/'+nodestr])))
 	if os.path.exists(blkpath+'/md'):
