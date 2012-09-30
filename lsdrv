@@ -224,7 +224,7 @@ def probe_controller(cpathlink):
 	if os.path.exists(cpath+'/driver'):
 		cntrlr.driver = os.path.realpath(cpath+'/driver').rsplit('/',1)[-1]
 		try:
-			cntrlr.modpre = cntrl.modalias.split(':',1)[0]
+			cntrlr.modpre = cntrlr.modalias.split(':',1)[0]
 		except:
 			pass
 	if cntrlr.modpre == 'pci':
