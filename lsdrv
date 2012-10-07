@@ -304,128 +304,102 @@ def probe_block(blocklink):
 	if name in blockbyname:
 		return blockbyname[name]
 	blkpath = os.path.realpath(blocklink)
-	nodestr=fileline1(blkpath+'/dev')
-	sizestr=sect2size(fileline1(blkpath+'/size'))
-	node = nodestr.split(':',1)
-	dev=Struct(name=name, node=nodestr, size=sizestr, major=int(node[0]), minor=int(node[1]), shown=False)
-	blockbyname[name] = dev
-	blockbynode[nodestr] = dev
-	if not os.path.exists('/dev/block/'+nodestr):
+	blk=Struct(name=name, attrpath=blkpath, shown=False)
+	blk.sizestr=sect2size(blk.size)
+	node = blk.dev.split(':',1)
+	blk.major, blk.minor = tuple(map(int, node))
+	blockbyname[name] = blk
+	blockbynode[blk.dev] = blk
+	if not os.path.exists('/dev/block/'+blk.dev):
 		if not os.path.exists('/dev/block'):
 			os.mkdir('/dev/block', 0755)
-		mm = tuple(map(int, nodestr.split(':')))
-		print "Creating device for node %s ..." % nodestr
-		os.mknod('/dev/block/'+nodestr, stat.S_IFBLK | 0660, os.makedev(mm[0], mm[1]))
+		print "Creating device for node %s ..." % blk.dev
+		os.mknod('/dev/block/'+blk.dev, stat.S_IFBLK | 0660, os.makedev(blk.major, blk.minor))
 	if os.path.exists(blkpath+'/device'):
-		dev.phy = probe_device(blkpath+'/device', nodestr)
-		if dev.phy:
-			dev.phy.block = dev
+		blk.phy = probe_device(blkpath+'/device', blk.dev)
+		if blk.phy:
+			blk.phy.block = blk
 	if os.path.exists(blkpath+'/holders'):
-		dev.holders = os.listdir(blkpath+'/holders')
+		blk.holders = os.listdir(blkpath+'/holders')
 	else:
-		dev.holders = []
+		blk.holders = []
 	if os.path.exists(blkpath+'/slaves'):
-		dev.slaves = os.listdir(blkpath+'/slaves')
+		blk.slaves = os.listdir(blkpath+'/slaves')
 	else:
-		dev.slaves = []
-	dev.partitions = [y for y in os.listdir(blkpath) if os.path.exists(blkpath+'/'+y+'/dev')]
+		blk.slaves = []
+	blk.partitions = [y for y in os.listdir(blkpath) if os.path.exists(blkpath+'/'+y+'/dev')]
 	if UseVolID:
-		dev.__dict__.update(extractvars(runx(['vol_id', '--export', '/dev/block/'+nodestr])))
+		blk.__dict__.update(extractvars(runx(['vol_id', '--export', '/dev/block/'+blk.dev])))
 	else:
-		dev.__dict__.update(extractvars(runx(['blkid', '-p', '-o', 'udev', '/dev/block/'+nodestr])))
+		blk.__dict__.update(extractvars(runx(['blkid', '-p', '-o', 'udev', '/dev/block/'+blk.dev])))
 	if os.path.exists(blkpath+'/md'):
-		dev.isMD = True
-		dev.__dict__.update(extractvars(runx(['mdadm', '--export', '--detail', '/dev/block/'+nodestr])))
-		dev.array_state = fileline1(blkpath+'/md/array_state')
-		dev.layout = fileline1(blkpath+'/md/layout')
-		if dev.MD_LEVEL=='raid10':
-			layout = int(dev.layout)
+		blk.md = Struct(attrpath=blkpath+'/md')
+		blk.isMD = True
+		blk.md.LEVEL = blk.md.level
+		if blk.md.level=='raid10':
+			layout = int(blk.md.layout)
 			near = layout & 0xff
 			if near>1:
-				dev.MD_LEVEL += ',near%d' % near
+				blk.md.LEVEL += ',near%d' % near
 			far = (layout & 0xff00) >> 8
 			if far>1:
 				if layout & 0x10000:
-					dev.MD_LEVEL += ',offset%d' % far
+					blk.md.LEVEL += ',offset%d' % far
 				else:
-					dev.MD_LEVEL += ',far%d' % far
-		elif dev.MD_LEVEL in ('raid5', 'raid6'):
+					blk.md.LEVEL += ',far%d' % far
+		elif blk.md.LEVEL in ('raid5', 'raid6'):
 			try:
-				dev.MD_LEVEL += ','+algorithms[int(dev.layout)]
+				blk.md.LEVEL += ','+algorithms[int(blk.layout)]
 			except:
 				pass
-		dev.preFS = "MD v%s %s (%s) %s" % (dev.MD_METADATA, dev.MD_LEVEL, dev.MD_DEVICES, dev.array_state)
-		try:
-			dev.degraded = int(fileline1(blkpath+'/md/degraded'))
-		except:
-			pass
-		if dev.degraded:
-			dev.preFS += " DEGRADED"
-			if dev.degraded>1:
-				dev.preFS += "x%d" % dev.degraded
-		try:
-			dev.chunk_size = int(fileline1(blkpath+'/md/chunk_size'))
-		except:
-			pass
-		if dev.chunk_size:
-			dev.preFS += ", %s Chunk" % byte2size(dev.chunk_size, "%g")
-		try:
-			dev.mismatch_count = int(fileline1(blkpath+'/md/mismatch_count'))
-		except:
-			pass
-		if dev.mismatch_count:
-			dev.preFS += ", %d Mismatches" % dev.mismatch_count
-		dev.sync_action = fileline1(blkpath+'/md/sync_action')
-		if dev.sync_action != 'idle':
+		blk.preFS = "MD v%s %s (%s) %s" % (blk.md.metadata_version, blk.md.LEVEL, blk.md.raid_disks, blk.md.array_state)
+		if blk.md.degraded:
+			blk.preFS += " DEGRADED"
+			if blk.md.degraded>1:
+				blk.preFS += "x%d" % blk.md.degraded
+		if blk.md.chunk_size:
+			blk.preFS += ", %s Chunk" % byte2size(blk.md.chunk_size, "%g")
+		if blk.md.mismatch_count:
+			blk.preFS += ", %d Mismatches" % blk.md.mismatch_count
+		if blk.md.sync_action != 'idle':
 			try:
-				dev.sync_speed =  k2size(int(fileline1(blkpath+'/md/sync_speed')))
+				sync_pos, sep, sync_end = blk.md.sync_completed.split(' ',2)
+				blk.md.SYNC = "%s/%s" % (k2size(int(sync_pos)), k2size(int(sync_end)))
 			except:
-				dev.sync_speed = 0
-			dev.sync_completed = fileline1(blkpath+'/md/sync_completed')
-			try:
-				sync_pos, sep, sync_end = dev.sync_completed.split(' ',2)
-				dev.sync_completed = "%s/%s" % (k2size(int(sync_pos)), k2size(int(sync_end)))
-			except:
-				pass
-			dev.preFS += ", %s (%s) %s/sec" % (dev.sync_action, dev.sync_completed, dev.sync_speed)
-	if dev.ID_FS_TYPE == 'linux_raid_member':
-		dev.hasMD = True
-		dev.__dict__.update(extractvars(runx(['mdadm', '--export', '--examine', '/dev/block/'+nodestr])))
-		if dev.holders:
-			dev.array = probe_block(blkpath+'/holders/'+dev.holders[0])
-			slavedir=blkpath+'/holders/'+dev.holders[0]+'/md/dev-'+name
-			dev.slave_slot = fileline1(slavedir+'/slot')
-			dev.slave_state = fileline1(slavedir+'/state')
-			peers = [y for y in dev.array.slaves if y != dev.name]
+				blk.md.SYNC = blk.md.sync_completed
+			blk.preFS += ", %s (%s) %s/sec" % (blk.md.sync_action, blk.md.SYNC, k2size(blk.md.sync_speed))
+	if blk.ID_FS_TYPE == 'linux_raid_member':
+		blk.hasMD = True
+		if blk.holders:
+			blk.array = probe_block(blkpath+'/holders/'+blk.holders[0])
+			blk.slave = Struct(attrpath=blkpath+'/holders/'+blk.holders[0]+'/md/dev-'+name)
+			peers = [y for y in blk.array.slaves if y != blk.name]
 			if peers:
 				peers = " (w/ %s)" % ",".join(peers)
 			else:
 				peers = ""
-			try:
-				devcount="%d" % int(dev.MD_DEVICES)
-			except:
-				devcount="?"
-			dev.FS = "MD %s (%s/%s)%s %s" % (dev.MD_LEVEL, dev.slave_slot, devcount, peers, dev.slave_state)
+			blk.FS = "MD %s (%s/%s)%s %s" % (blk.array.md.LEVEL, blk.slave.slot, blk.array.md.raid_disks, peers, blk.slave.state)
 		else:
-			dev.FS = "MD %s (%s) inactive" % (dev.MD_LEVEL, dev.MD_DEVICES)
-	elif dev.ID_FS_TYPE and dev.ID_FS_TYPE[0:3] == 'LVM':
+			blk.__dict__.update(extractvars(runx(['mdadm', '--export', '--examine', '/dev/block/'+blk.dev])))
+			blk.FS = "MD %s (%s) inactive" % (blk.MD_LEVEL, blk.MD_DEVICES)
+	elif blk.ID_FS_TYPE and blk.ID_FS_TYPE[0:3] == 'LVM':
 		# Placeholder string for inactive physical volumes.  It'll be
 		# overwritten when active PVs are scanned.
-		dev.FS = "PV %s (inactive)" % dev.ID_FS_TYPE
-	elif dev.ID_PART_TABLE_TYPE:
+		blk.FS = "PV %s (inactive)" % blk.ID_FS_TYPE
+	elif blk.ID_PART_TABLE_TYPE:
 		# The partitioning report is missed if vol_id is used in place of blkid
-		dev.FS = "Partitioned (%s)" % dev.ID_PART_TABLE_TYPE
-	elif dev.ID_FS_TYPE:
-		dev.FS = "%s" % dev.ID_FS_TYPE
+		blk.FS = "Partitioned (%s)" % blk.ID_PART_TABLE_TYPE
+	elif blk.ID_FS_TYPE:
+		blk.FS = "%s" % blk.ID_FS_TYPE
 	else:
-		dev.FS = "Empty/Unknown"
-	if dev.ID_FS_LABEL:
-		dev.FS += " '%s'" % dev.ID_FS_LABEL
-	if dev.ID_FS_UUID:
-		dev.FS += " {%s}" % dev.ID_FS_UUID
-	for part in dev.partitions:
+		blk.FS = "Empty/Unknown"
+	if blk.ID_FS_LABEL:
+		blk.FS += " '%s'" % blk.ID_FS_LABEL
+	if blk.ID_FS_UUID:
+		blk.FS += " {%s}" % blk.ID_FS_UUID
+	for part in blk.partitions:
 		probe_block(blkpath+'/'+part)
-	return dev
+	return blk
 
 for x in os.listdir('/sys/block/'):
 	probe_block('/sys/block/'+x)
@@ -533,12 +507,12 @@ def show_blocks(indent, blocks):
 				line2 = continuation[0]
 			else:
 				line2 = corner[0]
-			namesizenode = "%s %s [%s]" % (blk.name, blk.size, blk.node)
+			namesizenode = "%s %s [%s]" % (blk.name, blk.sizestr, blk.dev)
 			print "%s%s%s %s" % (indent, branch[1], namesizenode, blk.preFS)
 			line2spacer = line2+" "*max(0,len(namesizenode)-len(corner[0]))
 			print "%s%s%s %s" % (indent, branch[0], line2spacer, blk.FS)
 		else:
-			print "%s%s%s %s [%s] %s" % (indent, branch[1], blk.name, blk.size, blk.node, blk.FS)
+			print "%s%s%s %s [%s] %s" % (indent, branch[1], blk.name, blk.sizestr, blk.dev, blk.FS)
 		if blk.shown:
 			return
 		if blk.mounts:
