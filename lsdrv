@@ -258,21 +258,19 @@ def probe_device(devpathlink, nodestr):
 	devpath = os.path.realpath(devpathlink)
 	if devpath in phydevs:
 		return phydevs[devpath]
-	phy = Struct(dpath=devpath, node=nodestr,
-		vendor=fileline1(devpath+'/vendor'),
-		model=fileline1(devpath+'/model'))
-	if os.path.exists(devpath+'/unique_id'):
-		phy.serial = fileline1(devpath+'/unique_id')
-	if not phy.serial and os.path.exists(devpath+'/ieee1394_id'):
-		phy.serial = fileline1(devpath+'/ieee1394_id')
+	phy = Struct(attrpath=devpath, dev=nodestr)
 	if phy.serial:
 		phy.serial = phy.serial.strip()
+	if not phy.serial and phy.unique_id:
+		phy.serial = phy.unique_id.strip()
+	if not phy.serial and phy.ieee1394_id:
+		phy.serial = phy.ieee1394_id.strip()
 	if not phy.serial:
 		phy.__dict__.update(extractvars(runx(['ata_id', '--export', '/dev/block/'+nodestr])))
 		if phy.ID_SERIAL_SHORT:
-			phy.serial = phy.ID_SERIAL_SHORT
+			phy.serial = phy.ID_SERIAL_SHORT.strip()
 		elif phy.ID_SERIAL:
-			phy.serial = phy.ID_SERIAL
+			phy.serial = phy.ID_SERIAL.strip()
 	if not phy.serial:
 		phy.serial = extractre(re2, runx(['sginfo', '-s', '/dev/block/'+nodestr]))
 	if not phy.serial:
