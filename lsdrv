@@ -366,6 +366,12 @@ def probe_block(blocklink):
 			except:
 				blk.md.SYNC = blk.md.sync_completed
 			blk.preFS += ", %s (%s) %s/sec" % (blk.md.sync_action, blk.md.SYNC, k2size(blk.md.sync_speed))
+		if blk.md.uuid:
+			blk.md.UUID = ':'.join([blk.md.uuid[0:8], blk.md.uuid[8:16], blk.md.uuid[16:24], blk.md.uuid[24:]])
+		else:
+			blk.md.__dict__.update(extractvars(runx(['mdadm', '--export', '--detail', '/dev/block/'+blk.dev])))
+			blk.md.UUID = blk.md.MD_UUID
+		blk.preFS += ' {%s}' % blk.md.UUID
 	if blk.ID_FS_TYPE == 'linux_raid_member':
 		blk.hasMD = True
 		if blk.holders:
