@@ -139,17 +139,6 @@ def extractre(regexp, buffer, retexp=r'\1'):
 	return None
 
 #-------------------
-# Extract shell variable assignments from a multiline string buffer
-# This simple implementation returns everything after the equals sign
-# as the value, including any quotes.
-varsre = re.compile(r'^\s*([a-zA-Z][a-zA-Z0-9_]*)\s*=(.+)$', re.MULTILINE)
-def extractvars(buffer):
-	vars=dict()
-	for mo in varsre.finditer(buffer):
-		vars[mo.group(1)] = mo.group(2)
-	return vars
-
-#-------------------
 # By Seo Sanghyeon.  Some changes by Connelly Barnes and Phil Turmel.
 def try_int(s):
 	try: return int(s)
@@ -165,6 +154,17 @@ def natsort_key(s):
 			return s
 def natcmp(a, b):
 	return cmp(natsort_key(a), natsort_key(b))
+
+#-------------------
+# Extract shell variable assignments from a multiline string buffer
+# This simple implementation returns everything after the equals sign
+# as the value, including any quotes.
+varsre = re.compile(r'^\s*([a-zA-Z][a-zA-Z0-9_]*)\s*=(.+)$', re.MULTILINE)
+def extractvars(buffer):
+	vars=dict()
+	for mo in varsre.finditer(buffer):
+		vars[mo.group(1)] = try_int(mo.group(2))
+	return vars
 
 #-------------------
 # Convert device sizes expressed in kibibytes into human-readable
