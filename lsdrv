@@ -268,9 +268,9 @@ def probe_device(devpathlink, nodestr):
 	if not phy.serial:
 		phy.__dict__.update(extractvars(runx(['ata_id', '--export', '/dev/block/'+nodestr])))
 		if phy.ID_SERIAL_SHORT:
-			phy.serial = phy.ID_SERIAL_SHORT.strip()
+			phy.serial = str(phy.ID_SERIAL_SHORT).strip()
 		elif phy.ID_SERIAL:
-			phy.serial = phy.ID_SERIAL.strip()
+			phy.serial = str(phy.ID_SERIAL).strip()
 	if not phy.serial:
 		phy.serial = extractre(re2, runx(['sginfo', '-s', '/dev/block/'+nodestr]))
 	if not phy.serial:
