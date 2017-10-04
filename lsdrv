@@ -462,10 +462,12 @@ for x in runx(['pvs', '-o', 'pv_name,pv_free,pv_used,pv_uuid,vg_name,vg_size,vg_
 			else:
 				vgroups[vg_name] = Struct(name=vg_name, size=vg_size, free=vg_free, uuid=vg_uuid, LVs=[], PVs=[dev])
 
-for x in runx(['lvs', '-o', 'vg_name,lv_name', '--noheadings', '--separator', ' ']).split("\n"):
+for x in runx(['lvs', '-o', 'vg_name,lv_name,segtype', '--noheadings', '--separator', ' ']).split("\n"):
 	if x:
 		x = x.strip().replace('  ', ' ')
-		vg_name, lv_name = tuple(x.split(' ',2))
+		vg_name, lv_name, lv_type = tuple(x.split(' ',3))
+		if lv_type == "cache-pool":
+			continue
 		devstat = os.stat('/dev/'+vg_name+'/'+lv_name)
 		nodestr="%d:%d" % (os.major(devstat.st_rdev), os.minor(devstat.st_rdev))
 		if nodestr in blockbynode:
