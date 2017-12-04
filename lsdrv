@@ -15,7 +15,7 @@
 #	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 #	GNU General Public License for more details.
 
-import os, re, signal, stat, sys
+import glob, os, re, signal, stat, sys
 from subprocess import Popen, PIPE
 
 #-------------------
@@ -280,7 +280,14 @@ def probe_device(devpathlink, nodestr):
 	phy.name = "%s %s" % (os.path.realpath(devpath+'/subsystem').rsplit('/',1)[-1], devpath.rsplit('/',1)[-1])
 	phy.controller = probe_controller(os.path.dirname(devpath))
 	if phy.controller:
-		phy.controller.units[phy.name] = phy
+		phypath = devpath
+		phylist = glob.glob(phypath+'/phy-*')
+		while len(phypath) > len(phy.controller.cpath) and not phylist:
+			phypath = phypath.rsplit('/',1)[0]
+			phylist = glob.glob(phypath+'/phy-*')
+		if len(phylist)==1:
+			phy.phy = phylist[0][len(phypath)+1:]
+		phy.controller.units[phy.phy, phy.name] = phy
 	phydevs[devpath] = phy
 	return phy
 
@@ -551,11 +558,9 @@ hosts = dict([(int(x[4:]), Struct(n=int(x[4:]), cpath=os.path.dirname(os.path.re
 
 for n, host in hosts.items():
 	cntrlr = probe_controller(host.cpath)
-	if cntrlr :
-		targets = [x for x in os.listdir(host.cpath+host.hpath) if x[0:6]=='target']
-		if not targets:
-			phy = Struct(name='scsi %d:x:x:x [Empty]' % host.n)
-			cntrlr.units[phy.name] = phy
+	if cntrlr and not cntrlr.units:
+		phy = Struct(name='scsi %d:x:x:x [Empty]' % host.n)
+		cntrlr.units[None, phy.name] = phy
 
 for cntrlr in controllers.values():
 	cntrlr.unitlist = cntrlr.units.keys()
@@ -577,7 +582,7 @@ for f, cntrlr in tree:
 		phy = cntrlr.units[key]
 		if phy.last:
 			branch = corner
-		unitdetail = phy.name
+		unitdetail = ((phy.phy+' ') if phy.phy else '') + phy.name
 		if phy.vendor:
 			unitdetail += ' '+phy.vendor
 		if phy.model:
