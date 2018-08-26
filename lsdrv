@@ -188,7 +188,10 @@ def k2size(k, fmt="%4.2f"):
 # Convert device sizes expressed as 512-byte sectors into human-readable
 # sizes with a reasonable power-of-two suffix.
 def sect2size(sectors, fmt="%4.2f"):
-	return k2size(int(sectors)/2.0, fmt)
+	try:
+		return k2size(int(sectors)/2.0, fmt)
+	except:
+		return "%s sectors" % sectors
 
 #-------------------
 # Convert sizes expressed as bytes into human-readable
@@ -332,7 +335,7 @@ def probe_block(blocklink):
 		blk.slaves = os.listdir(blkpath+'/slaves')
 	else:
 		blk.slaves = []
-	blk.partitions = [y for y in os.listdir(blkpath) if os.path.exists(blkpath+'/'+y+'/dev')]
+	blk.partitions = [y for y in os.listdir(blkpath) if os.path.exists(blkpath+'/'+y+'/partition')]
 	if UseVolID:
 		blk.__dict__.update(extractvars(runx(['vol_id', '--export', '/dev/block/'+blk.dev])))
 	else:
